@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -47,7 +48,19 @@ func getFileInfo(filePath string) fileInformation {
 
 	winAttribData := fileStats.Sys().(*syscall.Win32FileAttributeData)
 
-	creationTime := time.Unix(0, winAttribData.CreationTime.Nanoseconds())
+	creationTime := winAttribData.LastWriteTime.Nanoseconds()
+	lastAccessTime := winAttribData.LastAccessTime.Nanoseconds()
+	lastWriteTime := winAttribData.LastWriteTime.Nanoseconds()
+
+	sortedTime := []int64{
+		creationTime,
+		lastAccessTime,
+		lastWriteTime,
+	}
+
+	sort.Slice(sortedTime, func(i, j int) bool { return sortedTime[i] < sortedTime[j] })
+
+	smallestTime := time.Unix(0, sortedTime[0])
 
 	fileInfo := fileInformation{
 		fullName:     fileStats.Name(),
@@ -56,7 +69,7 @@ func getFileInfo(filePath string) fileInformation {
 		directory:    filepath.Dir(filePath),
 		extension:    filepath.Ext(filePath),
 		size:         fileStats.Size(),
-		creationTime: creationTime,
+		creationTime: smallestTime,
 	}
 
 	return fileInfo
@@ -66,6 +79,21 @@ func getFileInfo(filePath string) fileInformation {
 func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (int, int) {
 	numberOfFiles := 0
 	numberOfDirectories := 0
+
+	mediaFileExtensions := []string{
+		".JPG",
+		".JPEG",
+		".HEIC",
+		".MP4",
+		".MOV",
+		".HEVC",
+		".PNG",
+		".JPEG",
+		".GIF",
+		".TIF",
+		".BMP",
+		".AVI",
+	}
 
 	filePaths := make([]string, 0)
 
@@ -96,11 +124,15 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 
 	go func() {
 		for _, filePath := range filePaths {
-			md5hash := getMD5Hash(filePath)
+			// md5hash := getMD5Hash(filePath)
 			fileInfoMap := make(map[string][]fileInformation)
 			fileInfo := getFileInfo(filePath)
-			fileInfoMap[md5hash] = append(fileInfoMap[md5hash], fileInfo)
-			fileInfoMaps <- fileInfoMap
+			for _, ext := range mediaFileExtensions {
+				if strings.ToUpper(fileInfo.extension) == ext {
+					fileInfoMap[filePath] = append(fileInfoMap[filePath], fileInfo)
+					fileInfoMaps <- fileInfoMap
+				}
+			}
 		}
 
 		close(fileInfoMaps)
@@ -160,9 +192,11 @@ func main() {
 	// path := "C:/DRIVERS" // 458 files
 	// path := "C:/DRIVERS/Dupes" // 6 files in 3 folder
 	// path := "C:/ffmpeg" // 44 files in 3 folders
-	path := "D:/Amandas iPhone Pics 10-2014 to 05-2018" // 5742 files
+	// path := "D:/Amandas iPhone Pics 10-2014 to 05-2018" // 5742 files
+	path := "F:/PhotoBackups"
 
-	sortPath := "D:/SortedPhotos"
+	// sortPath := "D:/SortedPhotos"
+	sortPath := "F:/SortedPhotos"
 
 	fmt.Println("Photos will be sorted into folder ", sortPath)
 
@@ -174,8 +208,8 @@ func main() {
 
 	numberOfMaps := len(allFilesMap)
 
-	fmt.Println("Total Number of MD5 hashes found: ", numberOfMaps)
 	fmt.Println("Total Number of Files found: ", numberOfFiles)
+	fmt.Println("Total Number of Photos found: ", numberOfMaps)
 	fmt.Println("Total Number of Directories found: ", numberOfDirectories)
 
 	copiedFiles := 0
