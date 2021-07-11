@@ -199,9 +199,12 @@ func main() {
 	// sortPath := "D:/SortedPhotos"
 	sortPath := "F:/SortedPhotosNoDupes"
 
-	err := os.Mkdir(sortPath, fs.FileMode(0777))
-	if err != nil {
-		log.Fatalf("Destination path %s could not be created!\nError: %s\n", sortPath, err)
+	_, err := os.Stat(sortPath)
+    if os.IsNotExist(err) {
+		err := os.Mkdir(sortPath, fs.FileMode(0777))
+		if err != nil {
+			log.Fatalf("Destination path %s could not be created!\nError: %s\n", sortPath, err)
+		}
 	} else {
 		fmt.Println("Photos will be sorted into folder ", sortPath)
 	}
@@ -215,8 +218,8 @@ func main() {
 	numberOfMaps := len(allFilesMap)
 
 	fmt.Println("Total Number of Files found: ", numberOfFiles)
-	fmt.Println("Total Number of Photos found: ", numberOfMaps)
 	fmt.Println("Total Number of Directories found: ", numberOfDirectories)
+	fmt.Println("Total Number of Unique Photos found: ", numberOfMaps)
 
 	copiedFiles := 0
 
