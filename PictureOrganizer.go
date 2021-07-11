@@ -193,7 +193,8 @@ func main() {
 	// path := "C:/DRIVERS/Dupes" // 6 files in 3 folder
 	// path := "C:/ffmpeg" // 44 files in 3 folders
 	// path := "D:/Amandas iPhone Pics 10-2014 to 05-2018" // 5742 files
-	path := "F:/PhotoBackups"
+	// path := "F:/PhotoBackups"
+	path := "F:/Amanda/WIFEY/C/Users/mandapanda/Desktop/Iphone picture back ups"
 
 	// sortPath := "D:/SortedPhotos"
 	sortPath := "F:/SortedPhotos"
@@ -239,8 +240,8 @@ func main() {
 				for fileFound {
 					_, err := os.Stat(destPath)
 					if err == nil {
-						fmt.Println("File already exists. Incrementing name by one: ", destPath)
 						destPath = destDir + "/" + val.fileName + " (" + fmt.Sprint(incrementFileNum) + ")" + val.extension
+						fmt.Println("File already exists. Incrementing name by one: ", val.fullName, " to ", destPath)
 						incrementFileNum++
 					} else {
 						copiedFilesChan <- copy(val.path, destPath)
