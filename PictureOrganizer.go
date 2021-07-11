@@ -124,12 +124,12 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 
 	go func() {
 		for _, filePath := range filePaths {
-			// md5hash := getMD5Hash(filePath)
+			md5hash := getMD5Hash(filePath)
 			fileInfoMap := make(map[string][]fileInformation)
 			fileInfo := getFileInfo(filePath)
 			for _, ext := range mediaFileExtensions {
 				if strings.ToUpper(fileInfo.extension) == ext {
-					fileInfoMap[filePath] = append(fileInfoMap[filePath], fileInfo)
+					fileInfoMap[md5hash] = append(fileInfoMap[md5hash], fileInfo)
 					fileInfoMaps <- fileInfoMap
 				}
 			}
@@ -194,12 +194,17 @@ func main() {
 	// path := "C:/ffmpeg" // 44 files in 3 folders
 	// path := "D:/Amandas iPhone Pics 10-2014 to 05-2018" // 5742 files
 	// path := "F:/PhotoBackups"
-	path := "F:/Amanda/WIFEY/C/Users/mandapanda/Desktop/Iphone picture back ups"
+	path := "F:/PhotoBackups/Amanda iPhone Pics 8-29-2020 backup"
 
 	// sortPath := "D:/SortedPhotos"
-	sortPath := "F:/SortedPhotos"
+	sortPath := "F:/SortedPhotosNoDupes"
 
-	fmt.Println("Photos will be sorted into folder ", sortPath)
+	err := os.Mkdir(sortPath, fs.FileMode(0777))
+	if err != nil {
+		log.Fatalf("Destination path %s could not be created!\nError: %s\n", sortPath, err)
+	} else {
+		fmt.Println("Photos will be sorted into folder ", sortPath)
+	}
 
 	start := time.Now()
 
@@ -218,36 +223,35 @@ func main() {
 	for key := range allFilesMap {
 		copiedFilesChan := make(chan int)
 		go func() {
-			for _, val := range allFilesMap[key] {
-				destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
-				splitDestDir := strings.Split(destDir, "/")
+			val := allFilesMap[key][0]
+			destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
+			splitDestDir := strings.Split(destDir, "/")
 
-				incrementDir := splitDestDir[0] + "/"
+			incrementDir := splitDestDir[0] + "/"
 
-				for _, split := range splitDestDir[1:] {
-					err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
-					incrementDir = incrementDir + split + "/"
-					if err != nil {
-						continue
-					}
+			for _, split := range splitDestDir[1:] {
+				err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
+				incrementDir = incrementDir + split + "/"
+				if err != nil {
+					continue
 				}
+			}
 
-				destPath := destDir + "/" + val.fullName
+			destPath := destDir + "/" + key + val.extension
 
-				fileFound := true
-				incrementFileNum := 2
+			fileFound := true
+			incrementFileNum := 2
 
-				for fileFound {
-					_, err := os.Stat(destPath)
-					if err == nil {
-						destPath = destDir + "/" + val.fileName + " (" + fmt.Sprint(incrementFileNum) + ")" + val.extension
-						fmt.Println("File already exists. Incrementing name by one: ", val.fullName, " to ", destPath)
-						incrementFileNum++
-					} else {
-						copiedFilesChan <- copy(val.path, destPath)
-						// copiedFiles = copiedFiles + copy(val.path, destPath)
-						fileFound = false
-					}
+			for fileFound {
+				_, err := os.Stat(destPath)
+				if err == nil {
+					destPath = destDir + "/" + val.fileName + " (" + fmt.Sprint(incrementFileNum) + ")" + val.extension
+					fmt.Println("File already exists. Incrementing name by one: ", val.fullName, " to ", destPath)
+					incrementFileNum++
+				} else {
+					copiedFilesChan <- copy(val.path, destPath)
+					// copiedFiles = copiedFiles + copy(val.path, destPath)
+					fileFound = false
 				}
 			}
 
