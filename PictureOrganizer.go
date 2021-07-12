@@ -14,7 +14,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	// "sync"
 )
 
 // File information struct
@@ -34,11 +33,10 @@ func getMD5Hash(filePath string) string {
 	md5Sum := md5.Sum(fileBytes)
 	md5String := hex.EncodeToString(md5Sum[:])
 
-	// fmt.Printf("Adding another hash for %s!\n", filePath)
-
 	return md5String
 }
 
+// Collect file information and return fileInformation object
 func getFileInfo(filePath string) fileInformation {
 	fileStats, err := os.Stat(filePath)
 
@@ -147,6 +145,7 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 	return numberOfFiles, numberOfDirectories
 }
 
+// Copy file function
 func copy(src, dst string) int {
 	sourceFileStat, err := os.Stat(src)
 	if err != nil {
@@ -185,25 +184,15 @@ func copy(src, dst string) int {
 }
 
 func main() {
-	// path := "E:/Backup"  //247631 files
-	// path := "E:/Backup/Amandas iPhone Pics" //2085 files
-	// path := "F:/Backups/Amandas iPhone Pics" //2085 files
-	// path := "E:/Backup/Amandas iPhone Pics 10-2014 to 05-2018" //18,335 files
-	// path := "C:/DRIVERS" // 458 files
-	// path := "C:/DRIVERS/Dupes" // 6 files in 3 folder
-	// path := "C:/ffmpeg" // 44 files in 3 folders
-	// path := "D:/Amandas iPhone Pics 10-2014 to 05-2018" // 5742 files
-	// path := "F:/PhotoBackups"
-	path := "F:/PhotoBackups/Amanda iPhone Pics 8-29-2020 backup"
+	path := "F:/PhotoBackups"
 
-	// sortPath := "D:/SortedPhotos"
 	sortPath := "F:/SortedPhotosNoDupes"
 
 	_, err := os.Stat(sortPath)
-    if os.IsNotExist(err) {
+	if os.IsNotExist(err) {
 		err := os.Mkdir(sortPath, fs.FileMode(0777))
 		if err != nil {
-			log.Fatalf("Destination path %s could not be created!\nError: %s\n", sortPath, err)
+			log.Fatalf("Destination path '%s' could not be created!\nError: %s\n", sortPath, err)
 		}
 	} else {
 		fmt.Println("Photos will be sorted into folder ", sortPath)
@@ -213,19 +202,26 @@ func main() {
 
 	allFilesMap := make(map[string][]fileInformation)
 
+	fmt.Println("Gathering file information...")
+
 	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap)
 
 	numberOfMaps := len(allFilesMap)
 
-	fmt.Println("Total Number of Files found: ", numberOfFiles)
+	gatherFileInfoElapsed := time.Since(start)
+
+	fmt.Println("Finished gathering file information in ", gatherFileInfoElapsed)
+	fmt.Println("\nTotal Number of Files found: ", numberOfFiles)
 	fmt.Println("Total Number of Directories found: ", numberOfDirectories)
 	fmt.Println("Total Number of Unique Photos found: ", numberOfMaps)
+	fmt.Println("")
 
 	copiedFiles := 0
 
-	for key := range allFilesMap {
-		copiedFilesChan := make(chan int)
-		go func() {
+	copiedFilesChan := make(chan int)
+	go func() {
+		incrementNum := 0
+		for key := range allFilesMap {
 			val := allFilesMap[key][0]
 			destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
 			splitDestDir := strings.Split(destDir, "/")
@@ -240,37 +236,36 @@ func main() {
 				}
 			}
 
-			destPath := destDir + "/" + key + val.extension
+			incrementName := fmt.Sprintf("MediaFile_%d%s", incrementNum, val.extension)
+			incrementNum++
+
+			destPath := destDir + "/" + incrementName
 
 			fileFound := true
-			incrementFileNum := 2
 
 			for fileFound {
 				_, err := os.Stat(destPath)
 				if err == nil {
-					destPath = destDir + "/" + val.fileName + " (" + fmt.Sprint(incrementFileNum) + ")" + val.extension
-					fmt.Println("File already exists. Incrementing name by one: ", val.fullName, " to ", destPath)
-					incrementFileNum++
+					fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
 				} else {
 					copiedFilesChan <- copy(val.path, destPath)
-					// copiedFiles = copiedFiles + copy(val.path, destPath)
 					fileFound = false
 				}
 			}
-
-			close(copiedFilesChan)
-		}()
-
-		for cp := range copiedFilesChan {
-			copiedFiles = copiedFiles + cp
 		}
+
+		close(copiedFilesChan)
+	}()
+
+	for cp := range copiedFilesChan {
+		copiedFiles = copiedFiles + cp
 	}
 
 	elapsed := time.Since(start)
 
-	fmt.Println("Files copied: ", copiedFiles)
+	fmt.Println("\nFiles copied: ", copiedFiles)
 
 	fmt.Println("Time elapsed: ", elapsed)
 
-	fmt.Println("Process Finished!")
+	fmt.Println("\nProcess Finished!")
 }
