@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"flag"
 )
 
 // File information struct
@@ -120,8 +121,8 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 
 	fileInfoMaps := make(chan map[string][]fileInformation)
 
-	go func() {
-		for _, filePath := range filePaths {
+	for _, filePath := range filePaths {
+		go func(filePath string) {
 			md5hash := getMD5Hash(filePath)
 			fileInfoMap := make(map[string][]fileInformation)
 			fileInfo := getFileInfo(filePath)
@@ -131,12 +132,11 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 					fileInfoMaps <- fileInfoMap
 				}
 			}
-		}
+		}(filePath)
+	}
 
-		close(fileInfoMaps)
-	}()
-
-	for f := range fileInfoMaps {
+	for range filePaths {
+		f := <- fileInfoMaps
 		for key, val := range f {
 			(*allFiles)[key] = append((*allFiles)[key], val...)
 		}
@@ -184,9 +184,21 @@ func copy(src, dst string) int {
 }
 
 func main() {
-	path := "F:/PhotoBackups"
+	var path string
+    var sortPath string
 
-	sortPath := "F:/SortedPhotosNoDupes"
+    // flags declaration
+    flag.StringVar(&path, "p", "F:/PhotoBackups", "Path to original files")
+    flag.StringVar(&sortPath, "d", "F:/SortedPhotosNoDupes", "Copy destination path")
+
+	flag.Usage = func() {
+        fmt.Printf("\nParameters Available:\n\n")
+        fmt.Printf("-p\tPath to original files\n")
+        fmt.Printf("-d\tCopy destination path\n\n")
+        fmt.Printf("Example: ./PictureOrganizer.exe -p \"C:\\foo\\bar\" -d \"C:\\bar\\foo\"\n")
+    }
+
+    flag.Parse()
 
 	_, err := os.Stat(sortPath)
 	if os.IsNotExist(err) {
@@ -194,9 +206,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Destination path '%s' could not be created!\nError: %s\n", sortPath, err)
 		}
-	} else {
-		fmt.Println("Photos will be sorted into folder ", sortPath)
 	}
+
+	fmt.Println("Photos will be sorted into folder", sortPath)
 
 	start := time.Now()
 
@@ -219,9 +231,9 @@ func main() {
 	copiedFiles := 0
 
 	copiedFilesChan := make(chan int)
-	go func() {
-		incrementNum := 0
-		for key := range allFilesMap {
+	for key := range allFilesMap {
+		go func(key string) {
+			incrementNum := 0
 			val := allFilesMap[key][0]
 			destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
 			splitDestDir := strings.Split(destDir, "/")
@@ -252,12 +264,11 @@ func main() {
 					fileFound = false
 				}
 			}
-		}
+		}(key)
+	}
 
-		close(copiedFilesChan)
-	}()
-
-	for cp := range copiedFilesChan {
+	for range allFilesMap {
+		cp := <- copiedFilesChan
 		copiedFiles = copiedFiles + cp
 	}
 
