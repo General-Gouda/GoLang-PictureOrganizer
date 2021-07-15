@@ -33,6 +33,7 @@ func getMD5Hash(filePath string) string {
 	fileBytes, _ := os.ReadFile(filePath)
 	md5Sum := md5.Sum(fileBytes)
 	md5String := hex.EncodeToString(md5Sum[:])
+	fileBytes = nil
 
 	return md5String
 }
@@ -74,6 +75,17 @@ func getFileInfo(filePath string) fileInformation {
 	return fileInfo
 }
 
+func fileWorker(jobs <-chan string, fileInfoMaps chan<- map[string][]fileInformation) {
+	for filePath := range jobs {
+		md5hash := getMD5Hash(filePath)
+		fileInfoMap := make(map[string][]fileInformation)
+		fileInfo := getFileInfo(filePath)
+
+		fileInfoMap[md5hash] = append(fileInfoMap[md5hash], fileInfo)
+		fileInfoMaps <- fileInfoMap
+	}
+}
+
 // Get a slice of files in the specified path
 func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (int, int) {
 	numberOfFiles := 0
@@ -94,7 +106,7 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 		".AVI",
 	}
 
-	filePaths := make([]string, 0)
+	filePaths := []string{}
 
 	var ff = func(path string, item os.FileInfo, errX error) error {
 
@@ -119,30 +131,73 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 		log.Printf("Failure retrieving file information from %s", path)
 	}
 
-	fileInfoMaps := make(chan map[string][]fileInformation)
+	numOfFilePaths := len(filePaths)
+
+	jobs := make(chan string, numOfFilePaths)
+	fileInfoMaps := make(chan map[string][]fileInformation, numOfFilePaths)
+
+	for w := 1; w <= 5; w++ {
+		go fileWorker(jobs, fileInfoMaps)
+	}
 
 	for _, filePath := range filePaths {
-		go func(filePath string) {
-			md5hash := getMD5Hash(filePath)
-			fileInfoMap := make(map[string][]fileInformation)
-			fileInfo := getFileInfo(filePath)
-			for _, ext := range mediaFileExtensions {
-				if strings.ToUpper(fileInfo.extension) == ext {
-					fileInfoMap[md5hash] = append(fileInfoMap[md5hash], fileInfo)
-					fileInfoMaps <- fileInfoMap
-				}
-			}
-		}(filePath)
+		jobs <- filePath
 	}
+
+	close(jobs)
 
 	for range filePaths {
 		f := <- fileInfoMaps
 		for key, val := range f {
-			(*allFiles)[key] = append((*allFiles)[key], val...)
+			for _, v := range val {
+				for _, ext := range mediaFileExtensions {
+					if strings.ToUpper(v.extension) == ext {
+						(*allFiles)[key] = append((*allFiles)[key], v)
+					}
+				}
+			}
+
+			// (*allFiles)[key] = append((*allFiles)[key], val...)
 		}
 	}
 
 	return numberOfFiles, numberOfDirectories
+}
+
+func copyWorker(copyJobs <-chan struct {int; string; fileInformation}, copiedFilesChan chan<- int) {
+	for cj := range copyJobs {
+		val := cj.fileInformation
+		sortPath := cj.string
+		incrementNum := cj.int
+		destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
+		splitDestDir := strings.Split(destDir, "/")
+
+		incrementDir := splitDestDir[0] + "/"
+
+		for _, split := range splitDestDir[1:] {
+			err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
+			incrementDir = incrementDir + split + "/"
+			if err != nil {
+				continue
+			}
+		}
+
+		incrementName := fmt.Sprintf("MediaFile_%d%s", incrementNum, val.extension)
+
+		destPath := destDir + "/" + incrementName
+
+		fileFound := true
+
+		for fileFound {
+			_, err := os.Stat(destPath)
+			if err == nil {
+				fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
+			} else {
+				copiedFilesChan <- copy(val.path, destPath)
+				fileFound = false
+			}
+		}
+	}
 }
 
 // Copy file function
@@ -229,43 +284,21 @@ func main() {
 	fmt.Println("")
 
 	copiedFiles := 0
+	incrementNum := 0
 
-	copiedFilesChan := make(chan int)
-	for key := range allFilesMap {
-		go func(key string) {
-			incrementNum := 0
-			val := allFilesMap[key][0]
-			destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
-			splitDestDir := strings.Split(destDir, "/")
+	copyJobs := make(chan struct {int; string; fileInformation}, numberOfMaps)
+	copiedFilesChan := make(chan int, numberOfMaps)
 
-			incrementDir := splitDestDir[0] + "/"
-
-			for _, split := range splitDestDir[1:] {
-				err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
-				incrementDir = incrementDir + split + "/"
-				if err != nil {
-					continue
-				}
-			}
-
-			incrementName := fmt.Sprintf("MediaFile_%d%s", incrementNum, val.extension)
-			incrementNum++
-
-			destPath := destDir + "/" + incrementName
-
-			fileFound := true
-
-			for fileFound {
-				_, err := os.Stat(destPath)
-				if err == nil {
-					fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
-				} else {
-					copiedFilesChan <- copy(val.path, destPath)
-					fileFound = false
-				}
-			}
-		}(key)
+	for w := 1; w <= 5; w++ {
+		go copyWorker(copyJobs, copiedFilesChan)
 	}
+
+	for key := range allFilesMap {
+		incrementNum++
+		copyJobs <- struct {int; string; fileInformation}{incrementNum, sortPath, allFilesMap[key][0]}
+	}
+
+	close(copyJobs)
 
 	for range allFilesMap {
 		cp := <- copiedFilesChan
