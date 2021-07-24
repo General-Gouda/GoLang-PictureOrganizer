@@ -4,17 +4,18 @@ package main
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
-	"flag"
 )
 
 // File information struct
@@ -87,7 +88,7 @@ func fileWorker(jobs <-chan string, fileInfoMaps chan<- map[string][]fileInforma
 }
 
 // Get a slice of files in the specified path
-func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (int, int) {
+func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, workers int) (int, int) {
 	numberOfFiles := 0
 	numberOfDirectories := 0
 
@@ -136,7 +137,7 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 	jobs := make(chan string, numOfFilePaths)
 	fileInfoMaps := make(chan map[string][]fileInformation, numOfFilePaths)
 
-	for w := 1; w <= 5; w++ {
+	for w := 1; w <= workers; w++ {
 		go fileWorker(jobs, fileInfoMaps)
 	}
 
@@ -147,7 +148,7 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 	close(jobs)
 
 	for range filePaths {
-		f := <- fileInfoMaps
+		f := <-fileInfoMaps
 		for key, val := range f {
 			for _, v := range val {
 				for _, ext := range mediaFileExtensions {
@@ -164,7 +165,11 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation) (i
 	return numberOfFiles, numberOfDirectories
 }
 
-func copyWorker(copyJobs <-chan struct {int; string; fileInformation}, copiedFilesChan chan<- int) {
+func copyWorker(copyJobs <-chan struct {
+	int
+	string
+	fileInformation
+}, copiedFilesChan chan<- int) {
 	for cj := range copyJobs {
 		val := cj.fileInformation
 		sortPath := cj.string
@@ -239,21 +244,27 @@ func copy(src, dst string) int {
 }
 
 func main() {
-	var path string
-    var sortPath string
+	numCPUs := runtime.NumCPU()
 
-    // flags declaration
-    flag.StringVar(&path, "p", "F:/PhotoBackups", "Path to original files")
-    flag.StringVar(&sortPath, "d", "F:/SortedPhotosNoDupes", "Copy destination path")
+	runtime.GOMAXPROCS(numCPUs)
+
+	var path string
+	var sortPath string
+	var workers int
+
+	// flags declaration
+	flag.StringVar(&path, "p", "F:/PhotoBackups", "Path to original files")
+	flag.StringVar(&sortPath, "d", "F:/SortedPhotosNoDupes", "Copy destination path")
+	flag.IntVar(&workers, "w", 10, "Number of worker goroutines to launch during concurrent operations")
 
 	flag.Usage = func() {
-        fmt.Printf("\nParameters Available:\n\n")
-        fmt.Printf("-p\tPath to original files\n")
-        fmt.Printf("-d\tCopy destination path\n\n")
-        fmt.Printf("Example: ./PictureOrganizer.exe -p \"C:\\foo\\bar\" -d \"C:\\bar\\foo\"\n")
-    }
+		fmt.Printf("\nParameters Available:\n\n")
+		fmt.Printf("-p\tPath to original files\n")
+		fmt.Printf("-d\tCopy destination path\n\n")
+		fmt.Printf("Example: ./PictureOrganizer.exe -p \"C:\\foo\\bar\" -d \"C:\\bar\\foo\"\n")
+	}
 
-    flag.Parse()
+	flag.Parse()
 
 	_, err := os.Stat(sortPath)
 	if os.IsNotExist(err) {
@@ -271,7 +282,7 @@ func main() {
 
 	fmt.Println("Gathering file information...")
 
-	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap)
+	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap, workers)
 
 	numberOfMaps := len(allFilesMap)
 
@@ -286,22 +297,30 @@ func main() {
 	copiedFiles := 0
 	incrementNum := 0
 
-	copyJobs := make(chan struct {int; string; fileInformation}, numberOfMaps)
+	copyJobs := make(chan struct {
+		int
+		string
+		fileInformation
+	}, numberOfMaps)
 	copiedFilesChan := make(chan int, numberOfMaps)
 
-	for w := 1; w <= 5; w++ {
+	for w := 1; w <= workers; w++ {
 		go copyWorker(copyJobs, copiedFilesChan)
 	}
 
 	for key := range allFilesMap {
 		incrementNum++
-		copyJobs <- struct {int; string; fileInformation}{incrementNum, sortPath, allFilesMap[key][0]}
+		copyJobs <- struct {
+			int
+			string
+			fileInformation
+		}{incrementNum, sortPath, allFilesMap[key][0]}
 	}
 
 	close(copyJobs)
 
 	for range allFilesMap {
-		cp := <- copiedFilesChan
+		cp := <-copiedFilesChan
 		copiedFiles = copiedFiles + cp
 	}
 
