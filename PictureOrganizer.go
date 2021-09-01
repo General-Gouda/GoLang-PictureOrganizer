@@ -243,6 +243,31 @@ func copy(src, dst string) int {
 	}
 }
 
+func displayProgressBar(count, total int) string {
+	doneBar := "█"
+	incompleteBar := " "
+
+	percentComplete := int(float32(count) / float32(total) * 100)
+	doneBarsDrawn := int(float32(count) / float32(total) * 50)
+	incompleteBarsDrawn := int(50 - doneBarsDrawn)
+
+	formattedString := "\r["
+
+	for i := 0; i < doneBarsDrawn; i++ {
+		formattedString += doneBar
+	}
+
+	for i := 0; i < incompleteBarsDrawn; i++ {
+		formattedString += incompleteBar
+	}
+
+	finishTheString := fmt.Sprintf("] %d%% - %d/%d Uploaded", percentComplete, count, total)
+
+	formattedString += finishTheString
+
+	return formattedString
+}
+
 func main() {
 	numCPUs := runtime.NumCPU()
 
@@ -322,6 +347,7 @@ func main() {
 	for range allFilesMap {
 		cp := <-copiedFilesChan
 		copiedFiles = copiedFiles + cp
+		fmt.Print(displayProgressBar(copiedFiles, numberOfMaps))
 	}
 
 	elapsed := time.Since(start)
