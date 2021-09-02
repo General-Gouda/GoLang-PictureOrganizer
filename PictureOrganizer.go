@@ -1,4 +1,6 @@
+//go:build windows
 // +build windows
+
 package main
 
 import (
@@ -27,6 +29,13 @@ type fileInformation struct {
 	extension    string
 	size         int64
 	creationTime time.Time
+}
+
+type copyStruct struct {
+	incrementNum int
+	sortPath     string
+	key          string
+	fileInfo     fileInformation
 }
 
 // Get a file's MD5 hash
@@ -165,41 +174,53 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 	return numberOfFiles, numberOfDirectories
 }
 
-func copyWorker(copyJobs <-chan struct {
-	int
-	string
-	fileInformation
-}, copiedFilesChan chan<- int) {
+func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int, allDestinationFilesKeys *[]string) {
 	for cj := range copyJobs {
-		val := cj.fileInformation
-		sortPath := cj.string
-		incrementNum := cj.int
+		val := cj.fileInfo
+		sortPath := cj.sortPath
+		// incrementNum := cj.incrementNum
+		md5hash := cj.key
 		destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
 		splitDestDir := strings.Split(destDir, "/")
 
 		incrementDir := splitDestDir[0] + "/"
 
-		for _, split := range splitDestDir[1:] {
-			err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
-			incrementDir = incrementDir + split + "/"
-			if err != nil {
-				continue
+		alreadyExists := false
+
+		for _, key := range *allDestinationFilesKeys {
+			if md5hash == key {
+				alreadyExists = true
 			}
 		}
 
-		incrementName := fmt.Sprintf("MediaFile_%d%s", incrementNum, val.extension)
+		if alreadyExists {
+			// fmt.Printf("A file with md5 hash %s already exists within the destination path.\n", md5hash)
+			copiedFilesChan <- 0
+			break
+		} else {
+			for _, split := range splitDestDir[1:] {
+				err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
+				incrementDir = incrementDir + split + "/"
+				if err != nil {
+					continue
+				}
+			}
 
-		destPath := destDir + "/" + incrementName
+			incrementName := fmt.Sprintf("%s%s", md5hash, val.extension)
 
-		fileFound := true
+			destPath := destDir + "/" + incrementName
 
-		for fileFound {
-			_, err := os.Stat(destPath)
-			if err == nil {
-				fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
-			} else {
-				copiedFilesChan <- copy(val.path, destPath)
-				fileFound = false
+			fileFound := true
+
+			for fileFound {
+				_, err := os.Stat(destPath)
+				if err == nil {
+					fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
+					copiedFilesChan <- 0
+				} else {
+					copiedFilesChan <- copy(val.path, destPath)
+					fileFound = false
+				}
 			}
 		}
 	}
@@ -261,7 +282,7 @@ func displayProgressBar(count, total int) string {
 		formattedString += incompleteBar
 	}
 
-	finishTheString := fmt.Sprintf("] %d%% - %d/%d Uploaded", percentComplete, count, total)
+	finishTheString := fmt.Sprintf("] %d%% - %d/%d Copied", percentComplete, count, total)
 
 	formattedString += finishTheString
 
@@ -304,10 +325,18 @@ func main() {
 	start := time.Now()
 
 	allFilesMap := make(map[string][]fileInformation)
+	allDestinationFilesMap := make(map[string][]fileInformation)
 
 	fmt.Println("Gathering file information...")
 
 	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap, workers)
+	getFilesInDirectory(sortPath, &allDestinationFilesMap, workers)
+
+	allDestinationFilesKeys := make([]string, 0, len(allDestinationFilesMap))
+
+	for k := range allDestinationFilesMap {
+		allDestinationFilesKeys = append(allDestinationFilesKeys, k)
+	}
 
 	numberOfMaps := len(allFilesMap)
 
@@ -322,29 +351,22 @@ func main() {
 	copiedFiles := 0
 	incrementNum := 0
 
-	copyJobs := make(chan struct {
-		int
-		string
-		fileInformation
-	}, numberOfMaps)
+	copyJobs := make(chan copyStruct, numberOfMaps)
 	copiedFilesChan := make(chan int, numberOfMaps)
 
 	for w := 1; w <= workers; w++ {
-		go copyWorker(copyJobs, copiedFilesChan)
+		go copyWorker(copyJobs, copiedFilesChan, &allDestinationFilesKeys)
 	}
 
 	for key := range allFilesMap {
 		incrementNum++
-		copyJobs <- struct {
-			int
-			string
-			fileInformation
-		}{incrementNum, sortPath, allFilesMap[key][0]}
+		copyJobs <- copyStruct{incrementNum, sortPath, key, allFilesMap[key][0]}
 	}
 
 	close(copyJobs)
 
-	for range allFilesMap {
+	// for range allFilesMap {
+	for range copiedFilesChan {
 		cp := <-copiedFilesChan
 		copiedFiles = copiedFiles + cp
 		fmt.Print(displayProgressBar(copiedFiles, numberOfMaps))
