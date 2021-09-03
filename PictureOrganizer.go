@@ -166,61 +166,44 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 					}
 				}
 			}
-
-			// (*allFiles)[key] = append((*allFiles)[key], val...)
 		}
 	}
 
 	return numberOfFiles, numberOfDirectories
 }
 
-func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int, allDestinationFilesKeys *[]string) {
+func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 	for cj := range copyJobs {
 		val := cj.fileInfo
 		sortPath := cj.sortPath
-		// incrementNum := cj.incrementNum
 		md5hash := cj.key
 		destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
 		splitDestDir := strings.Split(destDir, "/")
 
 		incrementDir := splitDestDir[0] + "/"
 
-		alreadyExists := false
-
-		for _, key := range *allDestinationFilesKeys {
-			if md5hash == key {
-				alreadyExists = true
+		for _, split := range splitDestDir[1:] {
+			err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
+			incrementDir = incrementDir + split + "/"
+			if err != nil {
+				continue
 			}
 		}
 
-		if alreadyExists {
-			// fmt.Printf("A file with md5 hash %s already exists within the destination path.\n", md5hash)
-			copiedFilesChan <- 0
-			break
-		} else {
-			for _, split := range splitDestDir[1:] {
-				err := os.Mkdir((incrementDir + "/" + split), fs.FileMode(0777))
-				incrementDir = incrementDir + split + "/"
-				if err != nil {
-					continue
-				}
-			}
+		incrementName := fmt.Sprintf("%s%s", md5hash, val.extension)
 
-			incrementName := fmt.Sprintf("%s%s", md5hash, val.extension)
+		destPath := destDir + "/" + incrementName
 
-			destPath := destDir + "/" + incrementName
+		fileFound := true
 
-			fileFound := true
-
-			for fileFound {
-				_, err := os.Stat(destPath)
-				if err == nil {
-					fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
-					copiedFilesChan <- 0
-				} else {
-					copiedFilesChan <- copy(val.path, destPath)
-					fileFound = false
-				}
+		for fileFound {
+			_, err := os.Stat(destPath)
+			if err == nil {
+				fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
+				copiedFilesChan <- 0
+			} else {
+				copiedFilesChan <- copy(val.path, destPath)
+				fileFound = false
 			}
 		}
 	}
@@ -332,10 +315,11 @@ func main() {
 	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap, workers)
 	getFilesInDirectory(sortPath, &allDestinationFilesMap, workers)
 
-	allDestinationFilesKeys := make([]string, 0, len(allDestinationFilesMap))
+	alreadyExists := 0
 
 	for k := range allDestinationFilesMap {
-		allDestinationFilesKeys = append(allDestinationFilesKeys, k)
+		delete(allFilesMap, k)
+		alreadyExists++
 	}
 
 	numberOfMaps := len(allFilesMap)
@@ -346,6 +330,7 @@ func main() {
 	fmt.Println("\nTotal Number of Files found: ", numberOfFiles)
 	fmt.Println("Total Number of Directories found: ", numberOfDirectories)
 	fmt.Println("Total Number of Unique Photos found: ", numberOfMaps)
+	fmt.Println("Total Number of Photos found that already exist in destination path: ", alreadyExists)
 	fmt.Println("")
 
 	copiedFiles := 0
@@ -355,7 +340,7 @@ func main() {
 	copiedFilesChan := make(chan int, numberOfMaps)
 
 	for w := 1; w <= workers; w++ {
-		go copyWorker(copyJobs, copiedFilesChan, &allDestinationFilesKeys)
+		go copyWorker(copyJobs, copiedFilesChan)
 	}
 
 	for key := range allFilesMap {
@@ -365,8 +350,7 @@ func main() {
 
 	close(copyJobs)
 
-	// for range allFilesMap {
-	for range copiedFilesChan {
+	for range allFilesMap {
 		cp := <-copiedFilesChan
 		copiedFiles = copiedFiles + cp
 		fmt.Print(displayProgressBar(copiedFiles, numberOfMaps))
