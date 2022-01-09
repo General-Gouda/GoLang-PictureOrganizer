@@ -178,6 +178,17 @@ func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 		sortPath := cj.sortPath
 		md5hash := cj.key
 		destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
+		formattedCreationTime := fmt.Sprintf(
+			"%d-%d-%d %d%d%d",
+			val.creationTime.Year(),
+			int(val.creationTime.Month()),
+			val.creationTime.Day(),
+			val.creationTime.Hour(),
+			val.creationTime.Minute(),
+			val.creationTime.Second(),
+		)
+
+		// Ensure that the folders exist all the way down the tree
 		splitDestDir := strings.Split(destDir, "/")
 
 		incrementDir := splitDestDir[0] + "/"
@@ -190,7 +201,7 @@ func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 			}
 		}
 
-		incrementName := fmt.Sprintf("%s%s", md5hash, val.extension)
+		incrementName := fmt.Sprintf("%s-%s%s", formattedCreationTime, md5hash, val.extension)
 
 		destPath := destDir + "/" + incrementName
 
