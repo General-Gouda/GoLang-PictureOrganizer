@@ -5,7 +5,7 @@ This program will help you sort through the media files within a given directory
 
 You provide a source path and a destination path. It will gather information about all of the media files in the source location, weed out any duplicates (based on MD5 hash of the file), and sort the pictures into the destination folder based on Year/Month.
 
-For instance, if a picture within the source directory was created on August 1st, 2009 it will be sorted into folder `{destinationpath}\2009\August`
+For instance, if a picture within the source directory was created on August 1st, 2009 at 10:19:56 AM it will be sorted into folder `{destinationpath}\2009\August\2009-08-01 101956-{md5hashvalue}.{file extension}`
 - - - -
 
 |THING|LINK/DESCRIPTION|
