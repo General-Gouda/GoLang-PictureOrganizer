@@ -156,8 +156,12 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 
 	close(jobs)
 
+	counter := 0
+
 	for range filePaths {
 		f := <-fileInfoMaps
+		counter++
+		fmt.Print(displayProgressBar(counter, numOfFilePaths))
 		for key, val := range f {
 			for _, v := range val {
 				for _, ext := range mediaFileExtensions {
@@ -179,7 +183,7 @@ func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 		md5hash := cj.key
 		destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
 		formattedCreationTime := fmt.Sprintf(
-			"%d-%d-%d %d%d%d",
+			"%d-%02d-%02d %02d%02d%02d",
 			val.creationTime.Year(),
 			int(val.creationTime.Month()),
 			val.creationTime.Day(),
@@ -276,7 +280,7 @@ func displayProgressBar(count, total int) string {
 		formattedString += incompleteBar
 	}
 
-	finishTheString := fmt.Sprintf("] %d%% - %d/%d Copied", percentComplete, count, total)
+	finishTheString := fmt.Sprintf("] %d%% - %d/%d", percentComplete, count, total)
 
 	formattedString += finishTheString
 
@@ -314,16 +318,18 @@ func main() {
 		}
 	}
 
-	fmt.Println("Photos will be sorted into folder", sortPath)
+	fmt.Println("Photos will be sorted within folder", sortPath)
 
 	start := time.Now()
 
 	allFilesMap := make(map[string][]fileInformation)
 	allDestinationFilesMap := make(map[string][]fileInformation)
 
-	fmt.Println("Gathering file information...")
+	fmt.Println("Gathering source file information...")
 
 	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap, workers)
+
+	fmt.Println("\nGathering destination file information...")
 	getFilesInDirectory(sortPath, &allDestinationFilesMap, workers)
 
 	alreadyExists := 0
@@ -337,7 +343,7 @@ func main() {
 
 	gatherFileInfoElapsed := time.Since(start)
 
-	fmt.Println("Finished gathering file information in ", gatherFileInfoElapsed)
+	fmt.Println("\nFinished gathering file information in ", gatherFileInfoElapsed)
 	fmt.Println("\nTotal Number of Files found: ", numberOfFiles)
 	fmt.Println("Total Number of Directories found: ", numberOfDirectories)
 	fmt.Println("Total Number of Unique Photos found: ", numberOfMaps)
@@ -361,6 +367,8 @@ func main() {
 
 	close(copyJobs)
 
+	fmt.Println("Copying files...")
+
 	for range allFilesMap {
 		cp := <-copiedFilesChan
 		copiedFiles = copiedFiles + cp
@@ -369,9 +377,9 @@ func main() {
 
 	elapsed := time.Since(start)
 
-	fmt.Println("\nFiles copied: ", copiedFiles)
+	fmt.Println("\n\nFiles copied: ", copiedFiles)
 
-	fmt.Println("Time elapsed: ", elapsed)
+	fmt.Println("\nTime elapsed: ", elapsed)
 
 	fmt.Println("\nProcess Finished!")
 }
