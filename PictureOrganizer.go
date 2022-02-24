@@ -182,8 +182,7 @@ func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 		sortPath := cj.sortPath
 		md5hash := cj.key
 		destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
-		formattedCreationTime := fmt.Sprintf(
-			"%d-%02d-%02d %02d%02d%02d",
+		formattedCreationTime := fmt.Sprintf("%d-%02d-%02d %02d%02d%02d",
 			val.creationTime.Year(),
 			int(val.creationTime.Month()),
 			val.creationTime.Day(),
