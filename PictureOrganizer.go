@@ -371,11 +371,11 @@ func main() {
 
 	gatherFileInfoElapsed := time.Since(start)
 
-	fmt.Println("\nFinished gathering file information in ", gatherFileInfoElapsed)
+	fmt.Println("\nFinished gathering File information in ", gatherFileInfoElapsed)
 	fmt.Println("\nTotal Number of Files found: ", numberOfFiles)
 	fmt.Println("Total Number of Directories found: ", numberOfDirectories)
-	fmt.Println("Total Number of Unique Photos found: ", numberOfMaps)
-	fmt.Println("Total Number of Photos found that already exist in destination path: ", alreadyExists)
+	fmt.Println("Total Number of Unique Files found: ", numberOfMaps)
+	fmt.Println("Total Number of Files found that already exist in destination path: ", alreadyExists)
 	fmt.Println("")
 
 	copiedFiles := 0
