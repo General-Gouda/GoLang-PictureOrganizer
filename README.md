@@ -10,7 +10,7 @@ For instance, if a picture within the source directory was created on August 1st
 
 |THING|LINK/DESCRIPTION|
 |---|---|
-|Language|Go 1.17.6|
+|Language|Go 1.18|
 |Authors|[Matt Marchese](https://github.com/General-Gouda)|
 
 [Installation](#installation)
@@ -31,7 +31,7 @@ Download the latest .exe file from the [Releases](https://github.com/General-Gou
 <a name="howtouse"></a>
 ## How to Use on Windows ##
 
-Open up your favorite command line tool, change directory to where the PictureOrganizer.exe file exists and run the following.
+Open up your favorite command line tool, change directory to where the PictureOrganizer.exe file exists and run the following:
 
 ```
 .\PictureOrganizer.exe -p "C:\Temp\SourcePath" -d "C:\Temp\DestinationPath"
@@ -51,5 +51,36 @@ go build ./PictureOrganizer.go
 ```
 
 This should create an executable file within the same folder. You can then run the application using the same argument flags that are listed above `-p -d and -w`
+
+## How to Use the Media File Extensions text file ##
+To specify which types of files you want to sort you can create a text file named `mediaFileExtensions.txt` within the same folder as the executable file.
+
+Within this folder you can specify file extensions for any file type you would like.
+They must be specified with a period in front of the file extensions:
+
+```
+.JPG
+.AVI
+.MOV
+```
+
+If a `mediaFileExtensions.txt` file is not found the program will use this hard-coded list of file extensions by default:
+
+```
+.JPG
+.JPEG
+.HEIC
+.MP4
+.MOV
+.HEVC
+.PNG
+.JPEG
+.GIF
+.TIF
+.BMP
+.AVI
+```
+
+The program will also create a new file and place these file extensions within a file in the same directory as the exe automatically.
 
 [[Back to top]](#top)
