@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/md5"
 	"encoding/hex"
 	"flag"
@@ -97,24 +98,9 @@ func fileWorker(jobs <-chan string, fileInfoMaps chan<- map[string][]fileInforma
 }
 
 // Get a slice of files in the specified path
-func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, workers int) (int, int) {
+func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, workers int, mediaFileExtensions []string) (int, int) {
 	numberOfFiles := 0
 	numberOfDirectories := 0
-
-	mediaFileExtensions := []string{
-		".JPG",
-		".JPEG",
-		".HEIC",
-		".MP4",
-		".MOV",
-		".HEVC",
-		".PNG",
-		".JPEG",
-		".GIF",
-		".TIF",
-		".BMP",
-		".AVI",
-	}
 
 	filePaths := []string{}
 
@@ -324,12 +310,55 @@ func main() {
 	allFilesMap := make(map[string][]fileInformation)
 	allDestinationFilesMap := make(map[string][]fileInformation)
 
+	var mediaFileExtensions []string
+	mediaFileExtensionsFile, medialFileErr := os.Open("mediaFileExtensions.txt")
+
+    if medialFileErr != nil {
+		fmt.Println("A mediaFileExtensions.txt file could not be found. Using default list of media file extensions instead.")
+		mediaFileExtensions = []string{
+			".JPG",
+			".JPEG",
+			".HEIC",
+			".MP4",
+			".MOV",
+			".HEVC",
+			".PNG",
+			".JPEG",
+			".GIF",
+			".TIF",
+			".BMP",
+			".AVI",
+		}
+
+		f, err := os.Create("mediaFileExtensions.txt")
+
+		if err != nil {
+			log.Print(err)
+		}
+
+		for _, value := range mediaFileExtensions {
+			fmt.Fprintln(f, value)  // print values to f, one per line
+		}
+
+		f.Close()
+    } else {
+		scanner := bufio.NewScanner(mediaFileExtensionsFile)
+
+		scanner.Split(bufio.ScanLines)
+
+		for scanner.Scan() {
+			mediaFileExtensions = append(mediaFileExtensions, scanner.Text())
+		}
+
+		mediaFileExtensionsFile.Close()
+	}
+
 	fmt.Println("Gathering source file information...")
 
-	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap, workers)
+	numberOfFiles, numberOfDirectories := getFilesInDirectory(path, &allFilesMap, workers, mediaFileExtensions)
 
 	fmt.Println("\nGathering destination file information...")
-	getFilesInDirectory(sortPath, &allDestinationFilesMap, workers)
+	getFilesInDirectory(sortPath, &allDestinationFilesMap, workers, mediaFileExtensions)
 
 	alreadyExists := 0
 
