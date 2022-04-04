@@ -1,0 +1,12 @@
+.JPG
+.JPEG
+.HEIC
+.MP4
+.MOV
+.HEVC
+.PNG
+.JPEG
+.GIF
+.TIF
+.BMP
+.AVI
