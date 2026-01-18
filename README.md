@@ -10,7 +10,7 @@ For instance, if a picture within the source directory was created on August 1st
 
 |THING|LINK/DESCRIPTION|
 |---|---|
-|Language|Go 1.18|
+|Language|Go 1.25.4|
 |Authors|[Matt Marchese](https://github.com/General-Gouda)|
 
 [Installation](#installation)
