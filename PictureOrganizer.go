@@ -129,26 +129,26 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 
 	numOfFilePaths := len(filePaths)
 
-	jobs := make(chan string, numOfFilePaths)
-	fileInfoMaps := make(chan map[string][]fileInformation, numOfFilePaths)
+	jobsChannel := make(chan string, numOfFilePaths)
+	fileInfoMapsChannel := make(chan map[string][]fileInformation, numOfFilePaths)
 
 	for w := 1; w <= workers; w++ {
-		go fileWorker(jobs, fileInfoMaps)
+		go fileWorker(jobsChannel, fileInfoMapsChannel)
 	}
 
 	for _, filePath := range filePaths {
-		jobs <- filePath
+		jobsChannel <- filePath
 	}
 
-	close(jobs)
+	close(jobsChannel)
 
 	counter := 0
 
 	for range filePaths {
-		f := <-fileInfoMaps
+		fileInfoMaps := <-fileInfoMapsChannel
 		counter++
 		fmt.Print(displayProgressBar(counter, numOfFilePaths))
-		for key, val := range f {
+		for key, val := range fileInfoMaps {
 			for _, v := range val {
 				for _, ext := range mediaFileExtensions {
 					if strings.ToUpper(v.extension) == ext {
