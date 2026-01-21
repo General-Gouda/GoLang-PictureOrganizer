@@ -148,11 +148,11 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 		fileInfoMaps := <-fileInfoMapsChannel
 		counter++
 		fmt.Print(displayProgressBar(counter, numOfFilePaths))
-		for key, val := range fileInfoMaps {
-			for _, v := range val {
-				for _, ext := range mediaFileExtensions {
-					if strings.ToUpper(v.extension) == ext {
-						(*allFiles)[key] = append((*allFiles)[key], v)
+		for key, files := range fileInfoMaps {
+			for _, file := range files {
+				for _, mediaFileExtension := range mediaFileExtensions {
+					if strings.ToUpper(file.extension) == mediaFileExtension {
+						(*allFiles)[key] = append((*allFiles)[key], file)
 					}
 				}
 			}
@@ -163,10 +163,10 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 }
 
 func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int, moveFiles, noRenameFiles bool) {
-	for cj := range copyJobs {
-		val := cj.fileInfo
-		sortPath := cj.sortPath
-		md5hash := cj.key
+	for copyJob := range copyJobs {
+		val := copyJob.fileInfo
+		sortPath := copyJob.sortPath
+		md5hash := copyJob.key
 		destDir := fmt.Sprintf("%s/%d/%s", sortPath, val.creationTime.Year(), val.creationTime.Month())
 		formattedCreationTime := fmt.Sprintf("%d-%02d-%02d %02d%02d%02d",
 			val.creationTime.Year(),
@@ -423,25 +423,25 @@ func main() {
 	copiedFiles := 0
 	incrementNum := 0
 
-	copyJobs := make(chan copyStruct, numberOfMaps)
-	copiedFilesChan := make(chan int, numberOfMaps)
+	copyJobsChannel := make(chan copyStruct, numberOfMaps)
+	copiedFilesChannel := make(chan int, numberOfMaps)
 
 	for w := 1; w <= workers; w++ {
-		go copyWorker(copyJobs, copiedFilesChan, moveFiles, noRenameFiles)
+		go copyWorker(copyJobsChannel, copiedFilesChannel, moveFiles, noRenameFiles)
 	}
 
 	for key := range allFilesMap {
 		incrementNum++
-		copyJobs <- copyStruct{incrementNum, sortPath, key, allFilesMap[key][0]}
+		copyJobsChannel <- copyStruct{incrementNum, sortPath, key, allFilesMap[key][0]}
 	}
 
-	close(copyJobs)
+	close(copyJobsChannel)
 
 	fmt.Println("Copying files...")
 
 	for range allFilesMap {
-		cp := <-copiedFilesChan
-		copiedFiles = copiedFiles + cp
+		copiedFilesResults := <-copiedFilesChannel
+		copiedFiles = copiedFiles + copiedFilesResults
 		fmt.Print(displayProgressBar(copiedFiles, numberOfMaps))
 	}
 
