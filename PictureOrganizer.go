@@ -162,7 +162,7 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 	return numberOfFiles, numberOfDirectories
 }
 
-func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
+func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int, moveFiles, noRenameFiles bool) {
 	for cj := range copyJobs {
 		val := cj.fileInfo
 		sortPath := cj.sortPath
@@ -190,10 +190,35 @@ func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 			}
 		}
 
-		incrementName := fmt.Sprintf("%s-%s%s", formattedCreationTime, md5hash, val.extension)
+		var incrementName string
+		var destPath string
 
-		destPath := destDir + "/" + incrementName
+		if noRenameFiles == true {
+			// Use the original file name and then check if it exists. If it does, add a number to
+			// the end of the file name and try again.
+			fileNameContinue := false
 
+			incrementName = fmt.Sprintf("%s", val.fullName)
+			incrementNumber := 1
+			destPath = fmt.Sprintf("%s/%s", destDir, incrementName)
+
+			for fileNameContinue == false {
+				_, err := os.Stat(destPath)
+				if err == nil {
+					incrementNumber += 1
+					incrementName = fmt.Sprintf("%s_%d%s", val.fileName, incrementNumber, val.extension)
+					destPath = fmt.Sprintf("%s/%s", destDir, incrementName)
+				} else {
+					fileNameContinue = true
+				}
+			}
+		} else {
+			incrementName = fmt.Sprintf("%s-%s%s", formattedCreationTime, md5hash, val.extension)
+			destPath = destDir + "/" + incrementName
+		}
+
+		// Perform another file exists check to make sure the renamed files aren't duplicated
+		// if the noRenameFiles flag is false
 		fileFound := true
 
 		for fileFound {
@@ -202,7 +227,7 @@ func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 				fmt.Printf("File '%s' already exists. Skipping\n", incrementName)
 				copiedFilesChan <- 0
 			} else {
-				copiedFilesChan <- copy(val.path, destPath)
+				copiedFilesChan <- copy(val.path, destPath, moveFiles)
 				fileFound = false
 			}
 		}
@@ -210,40 +235,51 @@ func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int) {
 }
 
 // Copy file function
-func copy(src, dst string) int {
-	sourceFileStat, err := os.Stat(src)
+func copy(sourceFile, destinationFile string, moveFile bool) int {
+	sourceFileStat, err := os.Stat(sourceFile)
 	if err != nil {
 		fmt.Println(err)
 		return 0
 	}
 
 	if !sourceFileStat.Mode().IsRegular() {
-		fmt.Printf("%s is not a regular file\n", src)
+		fmt.Printf("%s is not a regular file\n", sourceFile)
 		return 0
 	}
 
-	source, err := os.Open(src)
-	if err != nil {
-		fmt.Println(err)
-		return 0
-	}
-	defer source.Close()
-
-	destination, err := os.Create(dst)
-	if err != nil {
-		fmt.Println(err)
-		return 0
-	}
-	defer destination.Close()
-
-	bytes, err := io.Copy(destination, source)
-
-	if err != nil {
-		fmt.Println(err)
-		return 0
+	// Move the file with a rename if moveFile is True
+	// else Copy the file
+	if moveFile {
+		err := os.Rename(sourceFile, destinationFile)
+		if err != nil {
+			return 0
+		} else {
+			return 1
+		}
 	} else {
-		fmt.Sprintln(bytes)
-		return 1
+		source, err := os.Open(sourceFile)
+		if err != nil {
+			fmt.Println(err)
+			return 0
+		}
+		defer source.Close()
+
+		destination, err := os.Create(destinationFile)
+		if err != nil {
+			fmt.Println(err)
+			return 0
+		}
+		defer destination.Close()
+
+		bytes, err := io.Copy(destination, source)
+
+		if err != nil {
+			fmt.Println(err)
+			return 0
+		} else {
+			fmt.Sprintln(bytes)
+			return 1
+		}
 	}
 }
 
@@ -257,11 +293,11 @@ func displayProgressBar(count, total int) string {
 
 	formattedString := "\r["
 
-	for i := 0; i < doneBarsDrawn; i++ {
+	for range doneBarsDrawn {
 		formattedString += doneBar
 	}
 
-	for i := 0; i < incompleteBarsDrawn; i++ {
+	for range incompleteBarsDrawn {
 		formattedString += incompleteBar
 	}
 
@@ -280,17 +316,23 @@ func main() {
 	var path string
 	var sortPath string
 	var workers int
+	var moveFiles bool
+	var noRenameFiles bool
 
 	// flags declaration
 	flag.StringVar(&path, "p", "F:/PhotoBackups", "Path to original files")
 	flag.StringVar(&sortPath, "d", "F:/SortedPhotosNoDupes", "Copy destination path")
 	flag.IntVar(&workers, "w", 10, "Number of worker goroutines to launch during concurrent operations")
+	flag.BoolVar(&moveFiles, "m", false, "If True, move the files and remove them from the original path.")
+	flag.BoolVar(&noRenameFiles, "r", false, "If True, do not rename the files with creation datetime and MD5 hash.")
 
 	flag.Usage = func() {
 		fmt.Printf("\nParameters Available:\n\n")
 		fmt.Printf("-p\tPath to original files\n")
 		fmt.Printf("-d\tCopy destination path\n\n")
-		fmt.Printf("Example: ./PictureOrganizer.exe -p \"C:\\foo\\bar\" -d \"C:\\bar\\foo\"\n")
+		fmt.Printf("-m\tMove the files to the Destination Folder\n\n")
+		fmt.Printf("-r\tDo not rename the files\n\n")
+		fmt.Printf("Example: ./PictureOrganizer.exe -p \"C:\\foo\\bar\" -d \"C:\\bar\\foo\" -m\n")
 	}
 
 	flag.Parse()
@@ -313,7 +355,7 @@ func main() {
 	var mediaFileExtensions []string
 	mediaFileExtensionsFile, medialFileErr := os.Open("mediaFileExtensions.txt")
 
-    if medialFileErr != nil {
+	if medialFileErr != nil {
 		fmt.Println("A mediaFileExtensions.txt file could not be found. Using default list of media file extensions instead.")
 		mediaFileExtensions = []string{
 			".JPG",
@@ -337,11 +379,11 @@ func main() {
 		}
 
 		for _, value := range mediaFileExtensions {
-			fmt.Fprintln(f, value)  // print values to f, one per line
+			fmt.Fprintln(f, value) // print values to f, one per line
 		}
 
 		f.Close()
-    } else {
+	} else {
 		scanner := bufio.NewScanner(mediaFileExtensionsFile)
 
 		scanner.Split(bufio.ScanLines)
@@ -385,7 +427,7 @@ func main() {
 	copiedFilesChan := make(chan int, numberOfMaps)
 
 	for w := 1; w <= workers; w++ {
-		go copyWorker(copyJobs, copiedFilesChan)
+		go copyWorker(copyJobs, copiedFilesChan, moveFiles, noRenameFiles)
 	}
 
 	for key := range allFilesMap {
