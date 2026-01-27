@@ -285,15 +285,11 @@ func copy(sourceFile, destinationFile string, moveFile bool) int {
 		}
 		defer destination.Close()
 
-		bytes, err := io.Copy(destination, source)
-
-		if err != nil {
-			fmt.Println(err)
+		if _, err := io.Copy(destination, source); err != nil {
 			return 0
-		} else {
-			fmt.Sprintln(bytes)
-			return 1
 		}
+
+		return 1
 	}
 }
 
