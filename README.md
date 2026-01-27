@@ -10,7 +10,7 @@ For instance, if a picture within the source directory was created on August 1st
 
 |THING|LINK/DESCRIPTION|
 |---|---|
-|Language|Go 1.25.4|
+|Language|Go 1.25.6|
 |Authors|[Matt Marchese](https://github.com/General-Gouda)|
 
 [Installation](#installation)
@@ -43,6 +43,10 @@ Optionally, you can specify the number of goroutine workers to deploy using the 
 .\PictureOrganizer.exe -p "C:\Temp\SourcePath" -d "C:\Temp\DestinationPath" -w 20
 ```
 
+The Rename `-r` parameter (no values needed) will have the program keep the original names of the files rather than renaming them while copying them or moving them into their destination folder.
+
+The Move `-m` parameter (no values needed) will move the files rather than copy the files to the destination folder leaving no files in the source folder.
+
 ## How to Use on Linux ##
 Download the source code, install [Go](https://go.dev/doc/install) and run:
 
@@ -50,7 +54,7 @@ Download the source code, install [Go](https://go.dev/doc/install) and run:
 go build ./PictureOrganizer.go
 ```
 
-This should create an executable file within the same folder. You can then run the application using the same argument flags that are listed above `-p -d and -w`
+This should create an executable file within the same folder. You can then run the application using the same argument flags that are listed above `-p -d -w -r and -m`
 
 ## How to Use the Media File Extensions text file ##
 To specify which types of files you want to sort you can create a text file named `mediaFileExtensions.txt` within the same folder as the executable file.
