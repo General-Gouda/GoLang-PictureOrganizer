@@ -86,6 +86,6 @@ If a `mediaFileExtensions.txt` file is not found the program will use this hard-
 .AVI
 ```
 
-The program will also create a new file and place these file extensions within a file in the same directory as the exe automatically.
+The program will also create a new file with these file extensions added to it within the same directory as the executable file.
 
 [[Back to top]](#top)
