@@ -59,7 +59,8 @@ This should create an executable file within the same folder. You can then run t
 ## How to Use the Media File Extensions text file ##
 To specify which types of files you want to sort you can create a text file named `mediaFileExtensions.txt` within the same folder as the executable file.
 
-Within this folder you can specify file extensions for any file type you would like.
+Within this folder you can specify file extensions for any file type you would like copy or move.
+
 They must be specified with a period in front of the file extensions:
 
 ```
