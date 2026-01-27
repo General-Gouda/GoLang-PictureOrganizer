@@ -17,9 +17,12 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
+
+var wg sync.WaitGroup
 
 // File information struct
 type fileInformation struct {
@@ -86,7 +89,8 @@ func getFileInfo(filePath string) fileInformation {
 	return fileInfo
 }
 
-func fileWorker(jobs <-chan string, fileInfoMaps chan<- map[string][]fileInformation) {
+func fileWorker(jobs chan string, fileInfoMaps chan map[string][]fileInformation) {
+	defer wg.Done()
 	for filePath := range jobs {
 		md5hash := getMD5Hash(filePath)
 		fileInfoMap := make(map[string][]fileInformation)
@@ -104,6 +108,7 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 
 	filePaths := []string{}
 
+	// Create anonymous function which can be used by filepath.Walk to get files and determine if they are a file or dir
 	var ff = func(path string, item os.FileInfo, errX error) error {
 
 		if errX != nil {
@@ -132,6 +137,8 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 	jobsChannel := make(chan string, numOfFilePaths)
 	fileInfoMapsChannel := make(chan map[string][]fileInformation, numOfFilePaths)
 
+	wg.Add(workers)
+
 	for w := 1; w <= workers; w++ {
 		go fileWorker(jobsChannel, fileInfoMapsChannel)
 	}
@@ -142,10 +149,16 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 
 	close(jobsChannel)
 
+	// Wait for workers to finish and close the channel
+	go func() {
+		wg.Wait()
+		close(fileInfoMapsChannel)
+	}()
+
 	counter := 0
 
-	for range filePaths {
-		fileInfoMaps := <-fileInfoMapsChannel
+	// Retrieve the values from the channel and process them
+	for fileInfoMaps := range fileInfoMapsChannel {
 		counter++
 		fmt.Print(displayProgressBar(counter, numOfFilePaths))
 		for key, files := range fileInfoMaps {
@@ -162,7 +175,8 @@ func getFilesInDirectory(path string, allFiles *map[string][]fileInformation, wo
 	return numberOfFiles, numberOfDirectories
 }
 
-func copyWorker(copyJobs <-chan copyStruct, copiedFilesChan chan<- int, moveFiles, noRenameFiles bool) {
+func copyWorker(copyJobs chan copyStruct, copiedFilesChan chan int, moveFiles, noRenameFiles bool) {
+	defer wg.Done()
 	for copyJob := range copyJobs {
 		val := copyJob.fileInfo
 		sortPath := copyJob.sortPath
@@ -372,17 +386,17 @@ func main() {
 			".AVI",
 		}
 
-		f, err := os.Create("mediaFileExtensions.txt")
+		mediaExtensionsFile, err := os.Create("mediaFileExtensions.txt")
 
 		if err != nil {
 			log.Print(err)
 		}
 
 		for _, value := range mediaFileExtensions {
-			fmt.Fprintln(f, value) // print values to f, one per line
+			fmt.Fprintln(mediaExtensionsFile, value) // print values to f, one per line
 		}
 
-		f.Close()
+		mediaExtensionsFile.Close()
 	} else {
 		scanner := bufio.NewScanner(mediaFileExtensionsFile)
 
@@ -426,21 +440,32 @@ func main() {
 	copyJobsChannel := make(chan copyStruct, numberOfMaps)
 	copiedFilesChannel := make(chan int, numberOfMaps)
 
+	fmt.Println("Copying files...")
+
+	wg.Add(workers)
+
+	// Create the workers
 	for w := 1; w <= workers; w++ {
 		go copyWorker(copyJobsChannel, copiedFilesChannel, moveFiles, noRenameFiles)
 	}
 
+	// Feed the channel up to the buffer limit
 	for key := range allFilesMap {
 		incrementNum++
 		copyJobsChannel <- copyStruct{incrementNum, sortPath, key, allFilesMap[key][0]}
 	}
 
+	// Close the copyJobs channel after the jobs have completed
 	close(copyJobsChannel)
 
-	fmt.Println("Copying files...")
+	// Wait for all the workers to finish and then close the other channel
+	go func() {
+		wg.Wait()
+		close(copiedFilesChannel)
+	}()
 
-	for range allFilesMap {
-		copiedFilesResults := <-copiedFilesChannel
+	// Retrieve the results from the workers
+	for copiedFilesResults := range copiedFilesChannel {
 		copiedFiles = copiedFiles + copiedFilesResults
 		fmt.Print(displayProgressBar(copiedFiles, numberOfMaps))
 	}
